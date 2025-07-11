@@ -182,7 +182,6 @@ public class ZarrReader extends FormatReader {
     Location zarrFolder = new Location(id);
     String zarrPath = zarrFolder.getAbsolutePath();
     String zarrRootPath = zarrPath.substring(0, zarrPath.indexOf(".zarr") + 5);
-    String name = zarrRootPath.substring(zarrRootPath.lastIndexOf(File.separator)+1, zarrRootPath.length() - 5);
     Location omeMetaFile = new Location( zarrRootPath + File.separator + "OME", "METADATA.ome.xml" );
     String canonicalPath = new Location(zarrRootPath).getCanonicalPath();
 
@@ -456,7 +455,6 @@ public class ZarrReader extends FormatReader {
   @Override
   public void reopenFile() throws IOException {
     try {
-      String canonicalPath = new Location(currentId).getCanonicalPath();
       initializeZarrService();
     }
     catch (FormatException e) {
@@ -778,16 +776,6 @@ public class ZarrReader extends FormatReader {
           }
         }
       }
-      
-//      TODO: Likely remove as values unused
-//      for (int c = 0; c < columns.size(); c++) {
-//        Map<String, Object> column = (Map<String, Object>) columns.get(c);
-//        String colName = (String) column.get("name");
-//      }
-//      for (int r = 0; r < rows.size(); r++) {
-//        Map<String, Object> row = (Map<String, Object>) rows.get(r);
-//        String rowName = (String) row.get("name");
-//      }
       
       //Create empty wells for each row and column
       wellCount  = rows.size() * columns.size();

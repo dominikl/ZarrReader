@@ -36,7 +36,6 @@ import java.util.Set;
 import loci.common.services.Service;
 import loci.formats.FormatException;
 import loci.formats.meta.MetadataRetrieve;
-import loci.formats.services.ZarrService.Compression;
 
 public interface ZarrService extends Service {
   
