@@ -1,4 +1,4 @@
-package test.loci.formats.utests;
+package loci.formats.utests;
 
 /*-
  * #%L
