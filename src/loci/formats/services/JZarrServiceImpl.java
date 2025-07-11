@@ -32,14 +32,9 @@ import java.io.File;
  */
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.ByteOrder;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
+
 import java.nio.file.Paths;
-import java.text.MessageFormat;
 import java.util.Map;
 import java.util.Set;
 
@@ -80,7 +75,7 @@ implements ZarrService  {
    */
   public JZarrServiceImpl(String root) {
       checkClassDependency(com.bc.zarr.ZarrArray.class);
-      if (root != null && (root.toLowerCase().contains("s3:") || root.toLowerCase().contains("s3."))) {
+      if (root != null && (root.matches("^https?:.*") || root.matches("^s3:.*"))) {
         String[] pathSplit = root.toString().split(File.separator);
         if (S3FileSystemStore.ENDPOINT_PROTOCOL.contains(pathSplit[0].toLowerCase())) {
           s3fs = new S3FileSystemStore(Paths.get(root));
