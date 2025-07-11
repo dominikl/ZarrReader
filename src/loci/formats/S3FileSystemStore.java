@@ -33,7 +33,6 @@ import com.bc.zarr.ZarrConstants;
 import com.bc.zarr.ZarrUtils;
 import com.bc.zarr.storage.Store;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -88,8 +87,8 @@ public class S3FileSystemStore implements Store {
     }
 
     private void setupClient() {
-      String[] pathSplit = root.toString().split(File.separator);
-      String endpoint = ENDPOINT_PROTOCOL + pathSplit[1] + File.separator;
+      String[] pathSplit = root.toString().split("/");
+      String endpoint = ENDPOINT_PROTOCOL + pathSplit[1] + "/";
       try {   
         client = AmazonS3ClientBuilder.standard()
           .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, "auto"))
@@ -115,11 +114,11 @@ public class S3FileSystemStore implements Store {
     @Override
     public InputStream getInputStream(String key) throws IOException {
         // Get the base bucket name from splitting the root path and removing the prefixed protocol and end-point
-        String[] pathSplit = root.toString().split(File.separator);
+        String[] pathSplit = root.toString().split("/");
         String bucketName =  pathSplit[2];
         
         // Append the desired key onto the remaining prefix
-        String key2 = root.toString().substring(root.toString().indexOf(pathSplit[3]), root.toString().length()) + File.separator + key;
+        String key2 = root.toString().substring(root.toString().indexOf(pathSplit[3]), root.toString().length()) + "/" + key;
 
         try {   
           S3Object o = client.getObject(bucketName, key2);
@@ -201,7 +200,7 @@ public class S3FileSystemStore implements Store {
       TreeSet<String> keys = new TreeSet<String>();
 
       // Get the base bucket name from splitting the root path and removing the prefixed protocol and end-point
-      String[] pathSplit = root.toString().split(File.separator);
+      String[] pathSplit = root.toString().split("/");
       String bucketName =  pathSplit[2];
       
       // Append the desired key onto the remaining prefix

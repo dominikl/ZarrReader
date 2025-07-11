@@ -76,7 +76,7 @@ implements ZarrService  {
   public JZarrServiceImpl(String root) {
       checkClassDependency(com.bc.zarr.ZarrArray.class);
       if (root != null && (root.matches("^https?:.*") || root.matches("^s3:.*"))) {
-        String[] pathSplit = root.toString().split(File.separator);
+        String[] pathSplit = root.toString().split("/");
         if (S3FileSystemStore.ENDPOINT_PROTOCOL.contains(pathSplit[0].toLowerCase())) {
           s3fs = new S3FileSystemStore(Paths.get(root));
         }
