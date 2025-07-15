@@ -111,6 +111,7 @@ public class ZarrReader extends FormatReader {
   private boolean planesPrePopulated = false;
   private boolean hasSPW = false;
   private transient int currentOpenZarr = -1;
+  private String zarrRootPath;
 
   public ZarrReader() {
     super("Zarr", "zarr");
@@ -181,7 +182,7 @@ public class ZarrReader extends FormatReader {
     final MetadataStore store = makeFilterMetadata();
     Location zarrFolder = new Location(id);
     String zarrPath = zarrFolder.getAbsolutePath();
-    String zarrRootPath = zarrPath.substring(0, zarrPath.indexOf(".zarr") + 5);
+    this.zarrRootPath = zarrPath.substring(0, zarrPath.indexOf(".zarr") + 5);
     Location omeMetaFile = new Location( zarrRootPath + File.separator + "OME", "METADATA.ome.xml" );
     String canonicalPath = new Location(zarrRootPath).getCanonicalPath();
 
@@ -463,7 +464,7 @@ public class ZarrReader extends FormatReader {
   }
 
   protected void initializeZarrService() throws IOException, FormatException {
-    zarrService = new JZarrServiceImpl(altStore());
+    zarrService = new JZarrServiceImpl(zarrRootPath);
     openZarr();
   }
 
