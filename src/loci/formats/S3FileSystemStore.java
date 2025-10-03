@@ -37,6 +37,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -51,21 +52,19 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.ListObjectsRequest;
-import com.amazonaws.services.s3.model.ObjectListing;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.AnonymousAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder;
+import software.amazon.awssdk.auth.credentials.AnonymousCredentialsProvider;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsResponse;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 public class S3FileSystemStore implements Store {
 
     private Path root;
-    AmazonS3 client;
+    S3Client client;
     public static final String ENDPOINT_PROTOCOL= "https://";
     protected static final Logger LOGGER =
         LoggerFactory.getLogger(S3FileSystemStore.class);
@@ -91,10 +90,9 @@ public class S3FileSystemStore implements Store {
       String[] pathSplit = root.toString().split(File.separator);
       String endpoint = ENDPOINT_PROTOCOL + pathSplit[1] + File.separator;
       try {   
-        client = AmazonS3ClientBuilder.standard()
-          .withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpoint, "auto"))
-          .withPathStyleAccessEnabled(true)
-          .withCredentials(new AWSStaticCredentialsProvider(new AnonymousAWSCredentials())).build();
+        client = S3Client.builder()
+            .endpointOverride(new URI(endpoint))
+            .credentialsProvider(AnonymousCredentialsProvider.create()).build();
       } catch (Exception e) {
         LOGGER.info("Exception caught while constructing S3 client", e);
       } 
@@ -103,7 +101,7 @@ public class S3FileSystemStore implements Store {
     
     public void close() {
       if (client != null) {
-        client.shutdown();
+        client.close();
       }
     }
 
@@ -122,9 +120,9 @@ public class S3FileSystemStore implements Store {
         String key2 = root.toString().substring(root.toString().indexOf(pathSplit[3]), root.toString().length()) + File.separator + key;
 
         try {   
-          S3Object o = client.getObject(bucketName, key2);
-          S3ObjectInputStream responseStream = o.getObjectContent();
-          return responseStream;
+          ResponseInputStream<GetObjectResponse> o = client.getObject(GetObjectRequest.builder().bucket(bucketName).key(key2)
+              .build());
+          return o;
         } catch (Exception e) {
           LOGGER.info( "Unable to locate or access key: " + key2, e);
         }
@@ -207,29 +205,33 @@ public class S3FileSystemStore implements Store {
       // Append the desired key onto the remaining prefix
       String key2 = root.toString().substring(root.toString().indexOf(pathSplit[3]), root.toString().length());
 
-      ListObjectsRequest listObjectsRequest = new ListObjectsRequest()
-          .withBucketName(bucketName)
-          .withPrefix(key2)
+      ListObjectsRequest listObjectsRequest = ListObjectsRequest.builder()
+          .bucket(bucketName)
+          .prefix(key2)
+          .build()
         ;
 
-      ObjectListing listObjectsResponse = null;
+      ListObjectsResponse listObjectsResponse = null;
       String lastKey = null;
         
       do {
         if ( listObjectsResponse != null ) {
-          listObjectsRequest = listObjectsRequest
-             .withMarker(lastKey)
-          ; 
+          listObjectsRequest = ListObjectsRequest.builder()
+              .bucket(bucketName)
+              .prefix(key2)
+              .marker(lastKey)
+              .build();
         }
+      
+        listObjectsResponse = client.listObjects(listObjectsRequest);
 
-        listObjectsResponse = client.listObjects(listObjectsRequest); 
-        List<S3ObjectSummary> objects = listObjectsResponse.getObjectSummaries();
+        List<S3Object> objects = listObjectsResponse.contents();
 
         // Iterate over results
-        ListIterator<S3ObjectSummary> iterVals = objects.listIterator();
+        ListIterator<S3Object> iterVals = objects.listIterator();
         while (iterVals.hasNext()) {
-          S3ObjectSummary object = (S3ObjectSummary) iterVals.next();
-          String k = object.getKey();
+          S3Object object = (S3Object) iterVals.next();
+          String k = object.key();
           if (k.contains(suffix)) {
             String key = k.substring(k.indexOf(key2) + key2.length() + 1, k.indexOf(suffix));
             if (!key.isEmpty()) {
