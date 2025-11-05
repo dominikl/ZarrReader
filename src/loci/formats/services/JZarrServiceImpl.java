@@ -32,157 +32,144 @@ import java.io.File;
  */
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.ByteOrder;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.text.MessageFormat;
 import java.util.Map;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.bc.zarr.ArrayParams;
-import com.bc.zarr.Compressor;
-import com.bc.zarr.CompressorFactory;
-import com.bc.zarr.DataType;
-import com.bc.zarr.ZarrArray;
-import com.bc.zarr.ZarrGroup;
-
+import dev.zarr.zarrjava.ZarrException;
+import dev.zarr.zarrjava.core.Array;
+import dev.zarr.zarrjava.core.DataType;
 import loci.common.services.AbstractService;
 import loci.formats.FormatException;
 import loci.formats.FormatTools;
-import loci.formats.S3FileSystemStore;
-import loci.formats.meta.IPyramidStore;
-import loci.formats.meta.MetadataRetrieve;
-import ucar.ma2.InvalidRangeException;
 
-public class JZarrServiceImpl extends AbstractService
-implements ZarrService  {
-  // -- Constants --
+public class JZarrServiceImpl extends AbstractService implements ZarrService  {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(JZarrServiceImpl.class);
-  public static final String NO_ZARR_MSG = "JZARR is required to read Zarr files.";
 
-  // -- Fields --
-  S3FileSystemStore s3fs;
-  ZarrArray zarrArray;
-  String currentId;
-  Compressor zlibComp = CompressorFactory.create("zlib", "level", 8);  // 8 = compression level .. valid values 0 .. 9
-  Compressor bloscComp = CompressorFactory.create("blosc", "cname", "lz4hc", "clevel", 7);
-  Compressor nullComp = CompressorFactory.create("null");
+  public static final String NO_ZARR_MSG = "zarr-java is required to read Zarr files.";
+
+  ZarrLocation zarr;
+
+  Array array;
+
+  Map<String, Object> attr;
+
 
   /**
    * Default constructor.
    */
-  public JZarrServiceImpl(String root) {
-      checkClassDependency(com.bc.zarr.ZarrArray.class);
-      if (root != null && (root.toLowerCase().contains("s3:") || root.toLowerCase().contains("s3."))) {
-        String[] pathSplit = root.toString().split(File.separator);
-        if (S3FileSystemStore.ENDPOINT_PROTOCOL.contains(pathSplit[0].toLowerCase())) {
-          s3fs = new S3FileSystemStore(Paths.get(root));
-        }
-        else {
-          LOGGER.warn("Zarr Reader is not using S3FileSystemStore as this is currently for use with S3 configured with a https endpoint");
-        }
-      }
+  public JZarrServiceImpl(ZarrLocation zarr) {
+      checkClassDependency(Array.class);
+      this.zarr = zarr;
   }
 
   @Override
-  public void open(String file) throws IOException, FormatException {
-    currentId = file;
-    zarrArray = getArray(file);
-  }
-  
-  public void open(String id, ZarrArray array) {
-    currentId = id;
-    zarrArray = array;
-  }
-  
-  public Map<String, Object> getGroupAttr(String path) throws IOException, FormatException {
-    return getGroup(path).getAttributes();
+  public void open(String path) throws IOException, FormatException {
+      array = zarr.getArray(path);
+      attr = zarr.metadataFromArray(path);
   }
 
-  public Map<String, Object> getArrayAttr(String path) throws IOException, FormatException {
-    return getArray(path).getAttributes();
-  }
-
-  public Set<String> getGroupKeys(String path) throws IOException, FormatException {
-    return getGroup(path).getGroupKeys();
-  }
-
-  public Set<String> getArrayKeys(String path) throws IOException, FormatException {
-    return getGroup(path).getArrayKeys();
+  private boolean isV2() {
+    return array instanceof dev.zarr.zarrjava.v2.Array;
   }
 
   public DataType getZarrPixelType(int pixType) {
     DataType pixelType = null;
       switch(pixType) {
         case FormatTools.INT8:
-          pixelType = DataType.i1;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.INT8 :  dev.zarr.zarrjava.v3.DataType.INT8;
           break;
         case FormatTools.INT16:
-          pixelType = DataType.i2;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.INT16 : dev.zarr.zarrjava.v3.DataType.INT16;
           break;
         case FormatTools.INT32:
-          pixelType = DataType.i4;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.INT32 : dev.zarr.zarrjava.v3.DataType.INT32;
           break;
         case FormatTools.UINT8:
-          pixelType = DataType.u1;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.UINT8 : dev.zarr.zarrjava.v3.DataType.UINT8;
           break;
         case FormatTools.UINT16:
-          pixelType = DataType.u2;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.UINT16 : dev.zarr.zarrjava.v3.DataType.UINT16;
           break;
         case FormatTools.UINT32:
-          pixelType = DataType.u4;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.UINT32 : dev.zarr.zarrjava.v3.DataType.UINT32;
           break;
         case FormatTools.FLOAT:
-          pixelType = DataType.f4;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.FLOAT32 : dev.zarr.zarrjava.v3.DataType.FLOAT32;
           break;
         case FormatTools.DOUBLE:
-          pixelType = DataType.f8;
+          pixelType = isV2() ? dev.zarr.zarrjava.v2.DataType.FLOAT64 : dev.zarr.zarrjava.v3.DataType.FLOAT64;
           break;
       }
       return(pixelType);
   }
   
   public int getOMEPixelType(DataType pixType) {
-
     int pixelType = -1;
-      switch(pixType) {
-        case i1:
+    if (isV2()) {
+      dev.zarr.zarrjava.v2.DataType dt = (dev.zarr.zarrjava.v2.DataType)pixType;
+      switch(dt) {
+        case INT8:
           pixelType = FormatTools.INT8;
           break;
-        case i2:
+        case INT16:
           pixelType = FormatTools.INT16;
           break;
-        case i4:
+        case INT32:
           pixelType = FormatTools.INT32;
           break;
-        case u1:
+        case UINT8:
           pixelType = FormatTools.UINT8;
           break;
-        case u2:
+        case UINT16:
           pixelType = FormatTools.UINT16;
           break;
-        case u4:
+        case UINT32:
           pixelType = FormatTools.UINT32;
           break;
-        case f4:
+        case FLOAT32:
           pixelType = FormatTools.FLOAT;
           break;
-        case f8:
-          pixelType = FormatTools.DOUBLE;
-          break;
-        case i8:
+        case FLOAT64:
           pixelType = FormatTools.DOUBLE;
           break;
       default:
         break;
       }
+    }
+    else {
+      dev.zarr.zarrjava.v3.DataType dt = (dev.zarr.zarrjava.v3.DataType)pixType;
+      switch(dt) {
+        case INT8:
+          pixelType = FormatTools.INT8;
+          break;
+        case INT16:
+          pixelType = FormatTools.INT16;
+          break;
+        case INT32:
+          pixelType = FormatTools.INT32;
+          break;
+        case UINT8:
+          pixelType = FormatTools.UINT8;
+          break;
+        case UINT16:
+          pixelType = FormatTools.UINT16;
+          break;
+        case UINT32:
+          pixelType = FormatTools.UINT32;
+          break;
+        case FLOAT32:
+          pixelType = FormatTools.FLOAT;
+          break;
+        case FLOAT64:
+          pixelType = FormatTools.DOUBLE;
+          break;
+      default:
+        break;
+      }
+    }
       return(pixelType);
   }
 
@@ -193,179 +180,62 @@ implements ZarrService  {
 
   @Override
   public int[] getShape() {
-    if (zarrArray != null) return zarrArray.getShape();
+    if (attr != null && attr.containsKey("shape")) {
+      long[] shape = (long[]) attr.get("shape");
+      int[] res = new int[shape.length];
+      for (int i = 0; i < shape.length; i++) {
+        res[i] = (int) shape[i];
+      }
+      return res;
+    }
     return null;
   }
 
   @Override
   public int[] getChunkSize() {
-    if (zarrArray != null) return zarrArray.getChunks();
+    if (attr != null && attr.containsKey("chunkShape")) 
+      return (int[]) attr.get("chunkShape");
     return null;
   }
 
   @Override
   public int getPixelType() {
-    if (zarrArray != null) return getOMEPixelType(zarrArray.getDataType());
+    if (attr != null && attr.containsKey("dataType")) 
+      return getOMEPixelType((DataType) attr.get("dataType"));
     return 0;
   }
 
   @Override
   public boolean isLittleEndian() {
-    if (zarrArray != null) return (zarrArray.getByteOrder().equals(ByteOrder.LITTLE_ENDIAN));
+    if (attr != null && attr.containsKey("littleEndian")) 
+      return (boolean) attr.get("littleEndian");
     return false;
   }
 
   @Override
   public void close() throws IOException {
-    zarrArray = null;
-    currentId = null;
-    if (s3fs != null) {
-      s3fs.close();
-    }
+    array = null;
+    attr = null;
   }
 
   @Override
   public boolean isOpen() {
-    return (zarrArray != null && currentId != null);
+    return (array != null);
   }
-
-  @Override
-  public String getID() {
-    return currentId;
-  }
-
+  
   @Override
   public Object readBytes(int[] shape, int[] offset) throws FormatException, IOException {
-    if (zarrArray != null) {
+    if (array != null) {
       try {
-        return zarrArray.read(shape, offset);
-      } catch (InvalidRangeException e) {
+        long[] offsetLong = new long[offset.length];
+        for (int i = 0; i < offset.length; i++) {
+          offsetLong[i] = offset[i];
+        }
+        return array.read(offsetLong, shape).getDataAsByteBuffer().array();
+      } catch (ZarrException e) {
         throw new FormatException(e);
       }
     }
     else throw new IOException("No Zarr file opened");
-  }
-
-  @Override
-  public void saveBytes(Object data, int[] shape, int[] offset) throws FormatException, IOException {
-    if (zarrArray != null) {
-      try {
-        zarrArray.write(data, shape, offset);
-      } catch (InvalidRangeException e) {
-        throw new FormatException(e);
-      }
-    }
-    else throw new IOException("No Zarr file opened");
-  }
-
-  @Override
-  public void create(String file, MetadataRetrieve meta, int[] chunks, Compression compression) throws IOException {
-    int seriesCount = meta.getImageCount();
-    int resolutionCount = 1;
-
-    ArrayParams params = new ArrayParams();
-    params.chunks(chunks);
-    params.compressor(nullComp);
-
-    boolean isLittleEndian = !meta.getPixelsBigEndian(0);
-    if (isLittleEndian) {
-      params.byteOrder(ByteOrder.LITTLE_ENDIAN);
-    }
-
-    int x = meta.getPixelsSizeX(0).getValue().intValue();
-    int y = meta.getPixelsSizeY(0).getValue().intValue();
-    int z = meta.getPixelsSizeZ(0).getValue().intValue();
-    int c = meta.getPixelsSizeC(0).getValue().intValue();
-    int t = meta.getPixelsSizeT(0).getValue().intValue();
-   // c /= meta.getChannelSamplesPerPixel(0, 0).getValue().intValue();
-    int [] shape = {x, y, z, c, t};
-    params.shape(shape);
-
-    int pixelType = FormatTools.pixelTypeFromString(meta.getPixelsType(0).toString());
-    DataType zarrPixelType = getZarrPixelType(pixelType);
-    int bytes = FormatTools.getBytesPerPixel(pixelType);
-    params.dataType(zarrPixelType);
-
-    if (seriesCount > 1) {
-      ZarrGroup root = ZarrGroup.create(file);
-      ZarrGroup currentGroup = root;
-      for (int i = 0; i < seriesCount; i++) {
-        x = meta.getPixelsSizeX(i).getValue().intValue();
-        y = meta.getPixelsSizeY(i).getValue().intValue();
-        z = meta.getPixelsSizeZ(i).getValue().intValue();
-        c = meta.getPixelsSizeC(i).getValue().intValue();
-        t = meta.getPixelsSizeT(i).getValue().intValue();
-      //  c /= meta.getChannelSamplesPerPixel(i, 0).getValue().intValue();
-        shape = new int[]{x, y, z, c, t};
-        params.shape(shape);
-
-        pixelType = FormatTools.pixelTypeFromString(meta.getPixelsType(i).toString());
-        zarrPixelType = getZarrPixelType(pixelType);
-        params.dataType(zarrPixelType);
-
-        isLittleEndian = !meta.getPixelsBigEndian(i);
-        if (isLittleEndian) {
-          params.byteOrder(ByteOrder.LITTLE_ENDIAN);
-        }
-
-        if (meta instanceof IPyramidStore) {
-          resolutionCount = ((IPyramidStore) meta).getResolutionCount(i);
-        }
-        if (resolutionCount > 1) {
-          currentGroup = root.createSubGroup("Series"+i);
-          for (int j = 0; j < resolutionCount; j++) {
-            zarrArray = currentGroup.createArray("Resolution"+j, params);
-          }
-        }
-        else {
-          zarrArray = currentGroup.createArray("Series"+i, params);
-        }
-      }
-    }
-    else {
-      zarrArray = ZarrArray.create(file, params);
-    }
-    currentId = file;
-  }
-
-  @Override
-  public void create(String id, MetadataRetrieve meta, int[] chunks) throws IOException {
-    create(id, meta, chunks, Compression.NONE);
-  }
-
-  private String stripZarrRoot(String path) {
-    return path.substring(path.indexOf(".zarr")+5);
-  }
-  
-  private String getZarrRoot(String path) {
-    return path.substring(0, path.indexOf(".zarr")+5);
-  }
-
-  private ZarrGroup getGroup(String path) throws IOException {
-    ZarrGroup group = null;
-    if (s3fs == null) {
-      group = ZarrGroup.open(path);
-    }
-    else {
-      s3fs.updateRoot(getZarrRoot(s3fs.getRoot()) + stripZarrRoot(path));
-      group = ZarrGroup.open(s3fs);
-    }
-    return group;
-  }
-  
-  private ZarrArray getArray(String path) throws IOException {
-    ZarrArray array = null;
-    if (s3fs == null) {
-      array = ZarrArray.open(path);
-    }
-    else {
-      s3fs.updateRoot(getZarrRoot(s3fs.getRoot()) + stripZarrRoot(path));
-      array = ZarrArray.open(s3fs);
-    }
-    return array;
-  }
-  
-  public boolean usingS3FileSystemStore() {
-    return s3fs != null;
   }
 }
